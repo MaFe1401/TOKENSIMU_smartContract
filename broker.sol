@@ -75,7 +75,7 @@ contract broker is AccessControl{
         return (address(this));
     }
 
-    //tokens SIMU del owner
+    //TOKENSIMU del owner
     function tokensOwner() view public returns (uint256 tokens){
         return IERC20(tokensimu).balanceOf(address(this));
     }
@@ -95,19 +95,28 @@ contract broker is AccessControl{
     }
 
     //preu de l'acció obtingut amb l'oracle Pyth. Basat en el preu d'Amazon en dòlars
-    //Retorna un preu que no està actualitzat. Cal primer actualitzar el preu a la blockchain (obtenirPreuDinamic())
+    //Actualment retorna un preu que no té per què estar actualitzat. 
     function obtenirPreu() view public returns (uint256 preu){
         
         // Llista de https://docs.pyth.network/price-feeds/core/price-feeds
         //La xifra obtinguda s'ha de dividir per 10**5 per a obtenir el preu real. 
         bytes32 priceFeedId = 0xb5d0e0fa58a1f8b81498ae670ce93c872d14434b72c364885d4fa1b257cbb07a; // AMZN/USD
-        // Obté el preu de l'acció si s'ha actualitzat fa menys de 60 segons
-        try pyth.getPriceNoOlderThan(priceFeedId, 60) returns (PythStructs.Price memory p){ 
-            return uint256(uint64(p.price));
+        bytes32 priceFeedIdEURUSD = 0x76fa85158bf14ede77087fe3ae472f66213f6ea2f5b411cb2de472794990fa5c;
+        int64 EURUSD;
+        // Obté la relació EUR/USD 
+        try pyth.getPriceUnsafe(priceFeedIdEURUSD) returns (PythStructs.Price memory p){ 
+            EURUSD = int64(p.price);
         }
         catch{
-            PythStructs.Price memory p = pyth.getPriceUnsafe(priceFeedId); //Obté el preu més recent
-            return uint256(uint64(p.price)); 
+            EURUSD = 109885409;
+        }
+        // Obté el preu de l'acció 
+        try pyth.getPriceUnsafe(priceFeedId) returns (PythStructs.Price memory p){ 
+            return uint256(uint64((p.price*100000000/EURUSD)));
+
+        }
+        catch{
+            revert("PYTH_PRICE_UNAVAILABLE");
         }
 
         
@@ -145,7 +154,7 @@ contract broker is AccessControl{
         require(ok, "stable transferFrom failed");
 
         //Quants tokens pot comprar amb els EURC que ha pagat (s'estableix el preu del token)
-        tokensBought = (stableAmount*10**19)/price;
+        tokensBought = (stableAmount*10**19)/(price);
 
         // Assegurar-se que el contracte té suficients tokens per vendre
         uint256 contractBalance = IERC20(tokensimu).balanceOf(address(this));
